@@ -1,0 +1,2 @@
+Legjobb megoldás fitness értéke :  -1.0244370313924576
+R² Score: 0.9212030336868143
