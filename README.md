@@ -10,3 +10,13 @@ cd szakdoga_FE
 npm i
 npm run dev
 ```
+
+Backenden:
+
+cd szakdogaBE
+uvicorn main:app
+
+majd fe:(masik cmd)
+
+cd szakdoga_FE
+npm run dev

@@ -39,6 +39,8 @@ async def home() -> SystemRequest:
 async def predict(request: SystemRequest) -> SystemResponse:
     if(request.name == "Mass Spring Damper"):
         expected, predicted = MSDPredict(request.modelParams)
+    elif(request.name == "Inverted Pendulum"):
+        expected, predicted = IPPredict(request.modelParams)
     else:
         expected, predicted = []
     
@@ -176,3 +178,90 @@ def MSDPredict(params):
 
     predicted = [actions1, actions2]
     return ([NormalizeData(expected[0]),NormalizeData(expected[1])], predicted)
+
+#region IP system
+from scipy.integrate import solve_ivp
+import math
+import numpy as np
+
+
+def InvertedPendulum(t, x, a, b, c):
+    g = a
+    l = b
+    b = c
+
+    dxdt = np.zeros(2)
+
+    dxdt[0] = x[1]
+    dxdt[1] = (g / l) * math.sin(x[0]) - b * x[1]
+
+    return dxdt
+
+
+g = 9.81  # [m/s**2]
+l = 1  # [m]
+b = 1
+
+vModelParams = [g, l, b]
+
+tStart = 0
+tEnd = 20
+
+x0 = [0.01, 0]
+t = np.linspace(0, 20, 50)
+sol = solve_ivp(InvertedPendulum, [tStart, tEnd], x0, t_eval=t, args=vModelParams)
+
+times = sol.t
+position = sol.y[0]
+speed = sol.y[1]
+
+DD = []
+for i in range(len(times) - 2):
+    D = np.array([[times[i], times[i + 1], times[i + 2]],
+                  [position[i], position[i + 1], position[i + 2]],
+                  [speed[i], speed[i + 1], speed[i + 2]]])
+    DD.append(D)
+
+
+def NormalizeDataIP(data):
+  min = np.min(data)
+  max = np.max(data)
+  for i in range(len(data)):
+    data[i] = (data[i]- min) / (max - min)
+  return data
+
+normalizedPositionIP = NormalizeDataIP(sol.y[0])
+normalizedVelocityIP = NormalizeDataIP(sol.y[1])
+
+#endregion
+
+def IPPredict(params):
+    modelIPy0 = load_model("./models/IP-0004-y0[50]/IP-0004-y0[50]")
+    modelIPy1 = load_model("./models/IP-0018-y1[50]-750/IP-0018-y1[50]-750")
+
+    env1 = SzakdogaEnv(normalizedPositionIP)
+    obs1 = env1.reset()
+    done1 = False
+    actions1 = []
+
+    while not done1:
+        action1 = modelIPy0.predict(np.expand_dims(obs1, axis=0))
+        action1 = np.squeeze(action1)
+        obs1, rewards, done1, _ = env1.step(action1)
+        actions1.append(action1)
+
+    env2 = SzakdogaEnv(normalizedVelocityIP)
+    obs2 = env2.reset()
+    done2 = False
+    actions2 = []
+
+    while not done2:
+        action2 = modelIPy1.predict(np.expand_dims(obs2, axis=0))
+        action2 = np.squeeze(action2)
+        obs2, rewards, done2, _ = env2.step(action2)
+        actions2.append(action2)
+
+    expected = solve_ivp(InvertedPendulum, [tStart, tEnd], x0, t_eval=t, args=vModelParams).y
+
+    predicted = [actions1, actions2]
+    return ([NormalizeDataIP(expected[0]),NormalizeDataIP(expected[1])], predicted)
